@@ -78,24 +78,24 @@ class MainMenu:
         ).strip()
     
     def generate_program(self):
-        """Gera um programa ABAP"""
+        """Gera um programa ABAP usando sistema de agentes"""
         if not self.ai_client.is_configured():
             print_colored("❌ API não configurada! Configure a variável OPENAI_API_KEY.", "red")
             return
         
-        print_colored("🚀 Gerador de Programa ABAP", "cyan", bold=True)
-        print_colored("=" * 50, "cyan")
+        print_colored("🚀 Gerador de Programa ABAP (Sistema de Agentes)", "cyan", bold=True)
+        print_colored("=" * 60, "cyan")
         
         self.program_gen.generate()
     
     def generate_module(self):
-        """Gera um módulo ABAP"""
+        """Gera um módulo ABAP usando sistema de agentes"""
         if not self.ai_client.is_configured():
             print_colored("❌ API não configurada! Configure a variável OPENAI_API_KEY.", "red")
             return
         
-        print_colored("📦 Gerador de Módulo ABAP", "cyan", bold=True)
-        print_colored("=" * 50, "cyan")
+        print_colored("📦 Gerador de Módulo ABAP (Sistema de Agentes)", "cyan", bold=True)
+        print_colored("=" * 60, "cyan")
         
         self.module_gen.generate()
     

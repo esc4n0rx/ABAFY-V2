@@ -1,0 +1,29 @@
+RELATÓRIO DE CONSULTA DE MATERIAIS
+
+Criar um programa REPORT que permita consultar informações básicas de materiais (tabela MARA) com os seguintes requisitos:
+
+FUNCIONALIDADES:
+- Tela de seleção com campo para número do material (MATNR)
+- Select-options para faixa de materiais
+- Parâmetro opcional para tipo de material (MTART)
+- Checkbox para incluir materiais bloqueados
+
+SAÍDA:
+- Lista ALV com as seguintes colunas:
+  * Número do Material (MATNR)
+  * Descrição (MAKTX da MAKT)
+  * Tipo de Material (MTART)
+  * Grupo de Mercadorias (MATKL)
+  * Status do Material (MSTAE)
+  * Data de Criação (ERSDA)
+
+REGRAS:
+- Mostrar apenas materiais ativos por padrão
+- Juntar com MAKT para descrição em português (SPRAS = 'P')
+- Ordenar por número do material
+- Incluir contador de registros encontrados
+- Validar se pelo menos um critério foi informado
+
+PERFORMANCE:
+- Usar SELECT explícito (não SELECT *)
+- Validar se tabela de resultado não está vazia antes de exibir ALV
