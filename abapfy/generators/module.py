@@ -75,60 +75,38 @@ class ModuleGenerator(BaseGenerator):
     def _get_parameters(self, module_type: str) -> dict:
         """Obtém parâmetros específicos do módulo"""
         parameters = {}
-        
+        text_color = self.config.get("text_color", "cyan")
+
         if module_type in ["FUNCTION", "METHOD"]:
-            # Parâmetros de importação
-            import_params = click.prompt(
-                "Parâmetros de importação (formato: PARAM1 TYPE TYPE1, PARAM2 TYPE TYPE2)",
-                default="",
-                show_default=False
-            )
+            print_colored("Parâmetros de importação (formato: PARAM1 TYPE TYPE1, PARAM2 TYPE TYPE2):", text_color)
+            import_params = input()
             
-            # Parâmetros de exportação
-            export_params = click.prompt(
-                "Parâmetros de exportação (formato: PARAM1 TYPE TYPE1, PARAM2 TYPE TYPE2)",
-                default="",
-                show_default=False
-            )
-            
-            # Parâmetros de mudança
-            changing_params = click.prompt(
-                "Parâmetros de mudança (formato: PARAM1 TYPE TYPE1, PARAM2 TYPE TYPE2)",
-                default="",
-                show_default=False
-            )
+            print_colored("Parâmetros de exportação (formato: PARAM1 TYPE TYPE1, PARAM2 TYPE TYPE2):", text_color)
+            export_params = input()
+
+            print_colored("Parâmetros de mudança (formato: PARAM1 TYPE TYPE1, PARAM2 TYPE TYPE2):", text_color)
+            changing_params = input()
             
             parameters.update({
-                "importing": import_params,
-                "exporting": export_params,
-                "changing": changing_params
+                "importing": import_params.strip(),
+                "exporting": export_params.strip(),
+                "changing": changing_params.strip()
             })
             
             if module_type == "FUNCTION":
-                # Exceções
-                exceptions = click.prompt(
-                    "Exceções (separadas por vírgula)",
-                    default="",
-                    show_default=False
-                )
-                parameters["exceptions"] = exceptions
+                print_colored("Exceções (separadas por vírgula):", text_color)
+                exceptions = input()
+                parameters["exceptions"] = exceptions.strip()
         
         elif module_type == "SUBROUTINE":
-            # Parâmetros da FORM
-            form_params = click.prompt(
-                "Parâmetros da FORM (USING/CHANGING)",
-                default="",
-                show_default=False
-            )
-            parameters["form_parameters"] = form_params
+            print_colored("Parâmetros da FORM (USING/CHANGING):", text_color)
+            form_params = input()
+            parameters["form_parameters"] = form_params.strip()
         
         elif module_type in ["USER-EXIT", "BADI"]:
-            # Nome do enhancement
-            enhancement_name = click.prompt(
-                f"Nome do {module_type.lower()}",
-                type=str
-            )
-            parameters["enhancement_name"] = enhancement_name
+            print_colored(f"Nome do {module_type.lower()}:", text_color)
+            enhancement_name = input()
+            parameters["enhancement_name"] = enhancement_name.strip()
         
         return parameters
     
@@ -140,7 +118,7 @@ class ModuleGenerator(BaseGenerator):
         if parameters:
             full_desc += "\nParâmetros e configurações:\n"
             for key, value in parameters.items():
-                if value:  # Apenas incluir valores não vazios
+                if value:
                     full_desc += f"- {key}: {value}\n"
         
         return full_desc

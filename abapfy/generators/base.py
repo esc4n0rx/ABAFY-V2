@@ -18,12 +18,21 @@ class BaseGenerator(ABC):
         pass
     
     def _get_description(self, prompt_text: str) -> str:
-        """Obtém descrição do usuário"""
-        description = click.prompt(
-            click.style(prompt_text, fg=self.config.get("text_color", "cyan")),
-            type=str
-        )
-        return description.strip()
+        """Obtém descrição do usuário, com suporte para múltiplas linhas."""
+        print_colored(f"\n{prompt_text}", self.config.get("text_color", "cyan"))
+        print_colored("Você pode colar um texto com múltiplas linhas. Quando terminar, pressione Enter em uma linha vazia.", "yellow")
+        
+        lines = []
+        while True:
+            try:
+                line = input()
+                if line == "":
+                    break
+                lines.append(line)
+            except EOFError:
+                break
+        
+        return "\n".join(lines).strip()
     
     def _save_to_file(self, content: str, filename: str, extension: str = ".abap"):
         """Salva conteúdo em arquivo"""

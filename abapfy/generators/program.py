@@ -74,23 +74,24 @@ class ProgramGenerator(BaseGenerator):
     def _get_additional_info(self, program_type: str) -> dict:
         """Obtém informações adicionais baseadas no tipo"""
         additional_info = {}
-        
+        text_color = self.config.get("text_color", "cyan")
+
         if program_type == "REPORT":
             additional_info["has_selection_screen"] = click.confirm(
                 "Incluir tela de seleção?"
             )
-            additional_info["output_format"] = click.prompt(
-                "Formato de saída (LIST/ALV)",
-                default="ALV",
-                type=click.Choice(["LIST", "ALV"])
-            )
+            
+            print_colored("Formato de saída (LIST/ALV) [ALV]: ", text_color, end="")
+            output_format = input().strip().upper()
+            if output_format not in ["LIST", "ALV"]:
+                output_format = "ALV"
+            additional_info["output_format"] = output_format
         
         elif program_type == "MODULE-POOL":
-            additional_info["screen_count"] = click.prompt(
-                "Número de telas",
-                default=1,
-                type=int
-            )
+            print_colored("Número de telas [1]: ", text_color, end="")
+            screen_count_str = input().strip()
+            additional_info["screen_count"] = int(screen_count_str) if screen_count_str.isdigit() else 1
+            
             additional_info["has_table_control"] = click.confirm(
                 "Incluir Table Control?"
             )
@@ -99,11 +100,8 @@ class ProgramGenerator(BaseGenerator):
             additional_info["has_constructor"] = click.confirm(
                 "Incluir construtor?"
             )
-            additional_info["implements_interface"] = click.prompt(
-                "Interface a implementar (deixe vazio se nenhuma)",
-                default="",
-                show_default=False
-            )
+            print_colored("Interface a implementar (deixe vazio se nenhuma): ", text_color, end="")
+            additional_info["implements_interface"] = input().strip()
         
         return additional_info
     
@@ -115,7 +113,7 @@ class ProgramGenerator(BaseGenerator):
         if additional_info:
             full_desc += "\nRequirements adicionais:\n"
             for key, value in additional_info.items():
-                if value:  # Apenas incluir valores não vazios/False
+                if value:
                     full_desc += f"- {key}: {value}\n"
         
         return full_desc
