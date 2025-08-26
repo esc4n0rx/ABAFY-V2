@@ -1,6 +1,6 @@
 import os
 from openai import OpenAI
-from typing import Optional
+from typing import List, Optional
 from abapfy.config.manager import ConfigManager
 from abapfy.ai.prompts import ABAPPrompts
 from dotenv import load_dotenv
@@ -48,21 +48,70 @@ class AIClient:
         prompt = self.prompts.get_module_prompt(description, module_type)
         return self._make_request(prompt)
     
-    def debug_code(self, code: str) -> str:
-        """Faz debug de código ABAP"""
+    # Adicionar estes métodos em abapfy/ai/client.py após o método debug_code
+
+    def review_code(self, code_chunks: List[str], context: str = "") -> str:
+        """Faz review de código usando chunks menores"""
         if not self.client:
             raise RuntimeError("Cliente AI não configurado")
         
-        prompt = self.prompts.get_debug_prompt(code)
+        # Criar prompt contextualizado para chunks
+        prompt = f"""
+Você é um especialista em Code Review ABAP. Analise os seguintes chunks de código:
+
+CONTEXTO: {context}
+
+CHUNKS DE CÓDIGO:
+{self._format_chunks_for_review(code_chunks)}
+
+Forneça uma análise detalhada focando em:
+1. 🚀 Performance e otimizações
+2. 🔒 Segurança e validações  
+3. 📋 Boas práticas ABAP
+4. 🔧 Manutenibilidade
+5. 💡 Sugestões de melhoria
+
+Use formato claro com emojis e seja específico nas recomendações.
+"""
         return self._make_request(prompt)
     
-    def review_code(self, code: str) -> str:
-        """Faz review de código ABAP"""
+    def debug_code(self, code_chunks: List[str], error_context: str = "") -> str:
+        """Faz debug de código com contexto específico"""
         if not self.client:
             raise RuntimeError("Cliente AI não configurado")
         
-        prompt = self.prompts.get_review_prompt(code)
+        prompt = f"""
+Você é um especialista em Debug ABAP. Analise o código para identificar problemas:
+
+CONTEXTO DO ERRO: {error_context}
+
+CHUNKS DE CÓDIGO:
+{self._format_chunks_for_debug(code_chunks)}
+
+Identifique:
+1. 🐛 Possíveis bugs e erros
+2. ⚠️ Pontos de falha potenciais
+3. 🔍 Variáveis não inicializadas
+4. 🧠 Problemas de lógica
+5. 🛠️ Sugestões de correção
+
+Seja específico sobre localização e causa dos problemas.
+"""
         return self._make_request(prompt)
+    
+    def _format_chunks_for_review(self, chunks: List[str]) -> str:
+        """Formata chunks para análise de review"""
+        formatted = []
+        for i, chunk in enumerate(chunks, 1):
+            formatted.append(f"=== CHUNK {i} ===\n{chunk}\n")
+        return "\n".join(formatted)
+    
+    def _format_chunks_for_debug(self, chunks: List[str]) -> str:
+        """Formata chunks para análise de debug"""
+        formatted = []
+        for i, chunk in enumerate(chunks, 1):
+            formatted.append(f"=== CÓDIGO SUSPEITO {i} ===\n{chunk}\n")
+        return "\n".join(formatted)
     
     def _make_request(self, prompt: str) -> str:
         """Faz requisição para a IA"""

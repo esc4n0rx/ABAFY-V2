@@ -1,5 +1,10 @@
+# requirements.txt - adicionar as novas dependências
 click
 openai
 colorama
 rich
 pydantic
+sentence-transformers
+numpy
+faiss-cpu
+python-dotenv
