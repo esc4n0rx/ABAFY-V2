@@ -4,6 +4,7 @@ from abapfy.embeddings.manager import EmbeddingManager
 from abapfy.embeddings.chunker import ABAPCodeChunker, CodeChunk
 from abapfy.ai.client import AIClient
 from abapfy.config.manager import ConfigManager
+from abapfy.utils.loading import LoadingContext
 import json
 
 class CodeReviewer:
@@ -12,34 +13,42 @@ class CodeReviewer:
     def __init__(self, config: ConfigManager):
         self.config = config
         self.ai_client = AIClient(config)
-        self.embedding_manager = EmbeddingManager()
+        self.embedding_manager = EmbeddingManager(verbose=False)  # Desabilitar logs verbosos
         self.chunker = ABAPCodeChunker()
         
         # Critérios de análise com embeddings de referência
         self.review_criteria = {
             "performance": [
-                "SELECT * FROM table",
-                "nested loops with database access",
-                "inefficient internal table operations",
-                "missing WHERE conditions in SELECT"
+                "SELECT * FROM table bad practice",
+                "nested loops with database access inside",
+                "inefficient internal table operations without keys",
+                "missing WHERE conditions in SELECT statements",
+                "database access inside LOOP performance killer",
+                "unnecessary data movements large structures copying"
             ],
             "security": [
-                "SQL injection vulnerability",
-                "missing authorization check",
-                "hardcoded credentials",
-                "unvalidated user input"
+                "SQL injection vulnerability in dynamic statements",
+                "missing authorization check AUTHORITY-CHECK security",
+                "hardcoded credentials password in code",
+                "unvalidated user input direct assignment risk",
+                "missing authority check before data access",
+                "transaction without proper authorization validation"
             ],
             "best_practices": [
-                "missing exception handling",
-                "long methods without modularization", 
-                "missing documentation",
-                "obsolete ABAP syntax"
+                "missing exception handling TRY CATCH blocks",
+                "long methods without proper modularization", 
+                "missing documentation comments in code",
+                "obsolete ABAP syntax old style coding",
+                "sy-subrc not checked after database operations",
+                "hardcoded values instead of constants parameters"
             ],
             "maintainability": [
-                "complex nested conditions",
-                "magic numbers without constants",
-                "poor variable naming",
-                "tight coupling between components"
+                "complex nested conditions IF statements deep",
+                "magic numbers without proper constants definition",
+                "poor variable naming conventions unclear",
+                "tight coupling between components dependencies",
+                "long parameter lists in method signatures",
+                "duplicate code blocks repeated logic"
             ]
         }
     
@@ -53,35 +62,42 @@ class CodeReviewer:
             if not code_content.strip():
                 raise ValueError("Arquivo está vazio")
             
-            # Dividir código em chunks
-            chunks = self.chunker.chunk_code(code_content)
-            
-            # Criar embeddings
-            chunk_texts = [chunk.content for chunk in chunks]
-            content_hash = self.embedding_manager.calculate_content_hash(code_content)
-            
-            # Verificar cache
-            chunk_embeddings = self.embedding_manager.get_cached_embeddings(content_hash)
-            if chunk_embeddings is None:
-                chunk_embeddings = self.embedding_manager.create_embeddings(chunk_texts)
-                self.embedding_manager.cache_embeddings(content_hash, chunk_embeddings)
-            
-            # Analisar cada critério
-            analysis_results = {}
-            
-            for criterion, examples in self.review_criteria.items():
-                criterion_embedding = self.embedding_manager.create_embeddings(examples)[0]
-                similar_chunks = self.embedding_manager.find_similar_chunks(
-                    criterion_embedding, chunk_embeddings, chunk_texts, top_k=3
-                )
+            with LoadingContext("Analisando código para review", "spinner") as loader:
+                # Dividir código em chunks
+                chunks = self.chunker.chunk_code(code_content)
                 
-                analysis_results[criterion] = {
-                    'suspicious_chunks': similar_chunks,
-                    'issues_found': len([chunk for chunk, score in similar_chunks if score > 0.3])
-                }
-            
-            # Gerar análise detalhada com IA para chunks problemáticos
-            detailed_analysis = self._generate_detailed_analysis(chunks, analysis_results)
+                # Criar embeddings
+                chunk_texts = [chunk.content for chunk in chunks]
+                content_hash = self.embedding_manager.calculate_content_hash(code_content)
+                
+                # Verificar cache
+                chunk_embeddings = self.embedding_manager.get_cached_embeddings(content_hash)
+                if chunk_embeddings is None:
+                    # Progress callback silencioso
+                    def progress_callback(current, total, status):
+                        pass
+                    
+                    chunk_embeddings = self.embedding_manager.create_embeddings(
+                        chunk_texts, progress_callback
+                    )
+                    self.embedding_manager.cache_embeddings(content_hash, chunk_embeddings)
+                
+                # Analisar cada critério
+                analysis_results = {}
+                
+                for criterion, examples in self.review_criteria.items():
+                    criterion_embedding = self.embedding_manager.create_embeddings(examples)[0]
+                    similar_chunks = self.embedding_manager.find_similar_chunks(
+                        criterion_embedding, chunk_embeddings, chunk_texts, top_k=3
+                    )
+                    
+                    analysis_results[criterion] = {
+                        'suspicious_chunks': similar_chunks,
+                        'issues_found': len([chunk for chunk, score in similar_chunks if score > 0.3])
+                    }
+                
+                # Gerar análise detalhada com IA para chunks problemáticos
+                detailed_analysis = self._generate_detailed_analysis(chunks, analysis_results)
             
             # Criar relatório final
             report = self._create_review_report(file_path, chunks, analysis_results, detailed_analysis)
@@ -104,10 +120,10 @@ class CodeReviewer:
                     problematic_chunks.add(chunk_content)
         
         # Analisar cada chunk problemático
-        for chunk_content in list(problematic_chunks)[:5]:  # Limitar a 5 chunks
+        for i, chunk_content in enumerate(list(problematic_chunks)[:3], 1):  # Limitar a 3 chunks
             try:
-                chunk_analysis = self.ai_client.review_code(chunk_content)
-                detailed_analysis[chunk_content[:100]] = chunk_analysis
+                chunk_analysis = self.ai_client.review_code([chunk_content])
+                detailed_analysis[f"chunk_suspeito_{i}"] = chunk_analysis
             except Exception:
                 continue
         
@@ -168,11 +184,11 @@ class CodeReviewer:
             if results['issues_found'] > 0:
                 if criterion == "performance":
                     recommendations.append(
-                        "🚀 Otimize consultas ao banco de dados usando campos específicos no SELECT"
+                        "🚀 Otimize consultas ao banco usando campos específicos e WHERE clauses"
                     )
                 elif criterion == "security":
                     recommendations.append(
-                        "🔒 Implemente verificações de autorização e valide entradas do usuário"
+                        "🔒 Implemente verificações de autorização e valide entradas de usuário"
                     )
                 elif criterion == "best_practices":
                     recommendations.append(

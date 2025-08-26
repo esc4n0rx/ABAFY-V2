@@ -13,7 +13,6 @@ try:
     from huggingface_hub import InferenceClient
     HF_HUB_AVAILABLE = True
 except ImportError:
-    print("⚠️ huggingface-hub não instalado. Usando requests...")
     HF_HUB_AVAILABLE = False
     InferenceClient = None
 
@@ -22,7 +21,7 @@ load_dotenv()
 class EmbeddingManager:
     """Gerenciador de embeddings para código ABAP usando Hugging Face"""
     
-    def __init__(self, model_name: str = "sentence-transformers/all-MiniLM-L6-v2"):
+    def __init__(self, model_name: str = "sentence-transformers/all-MiniLM-L6-v2", verbose: bool = False):
         # Modelos que funcionam com feature-extraction
         self.available_models = [
             "sentence-transformers/all-MiniLM-L6-v2",
@@ -35,20 +34,20 @@ class EmbeddingManager:
         
         self.model_name = model_name
         self.current_model = model_name
+        self.verbose = verbose  # Controla verbosidade dos logs
         
         # Obter token da API do Hugging Face
         self.api_token = os.getenv('HF_TOKEN') or os.getenv('HF_API_TOKEN') or os.getenv('HUGGINGFACE_API_TOKEN')
         
         if not self.api_token:
-            print("❌ Token do Hugging Face não configurado!")
-            print("💡 Configure HF_TOKEN, HF_API_TOKEN ou HUGGINGFACE_API_TOKEN")
-            print("   1. Acesse: https://huggingface.co/settings/tokens")
-            print("   2. Crie token com permissão 'Read'")
-            print("   3. Configure: set HF_TOKEN=hf_seu_token")
+            if self.verbose:
+                print("❌ Token do Hugging Face não configurado!")
+                print("💡 Configure HF_TOKEN, HF_API_TOKEN ou HUGGINGFACE_API_TOKEN")
             self.offline_mode = True
             self.client = None
         else:
-            print(f"🔑 Token HF encontrado: {self.api_token[:8]}...{self.api_token[-4:]}")
+            if self.verbose:
+                print(f"🔑 Token HF encontrado: {self.api_token[:8]}...{self.api_token[-4:]}")
             self.offline_mode = False
             self._init_client()
         
@@ -74,30 +73,32 @@ class EmbeddingManager:
                     provider="hf-inference",
                     api_key=self.api_token
                 )
-                print("✅ Cliente Hugging Face inicializado com provider hf-inference")
+                if self.verbose:
+                    print("✅ Cliente Hugging Face inicializado com provider hf-inference")
                 
                 # Testar conexão
                 if not self._test_client():
-                    print("⚠️ Cliente HF falhou, usando requests diretos...")
+                    if self.verbose:
+                        print("⚠️ Cliente HF falhou, usando requests diretos...")
                     self.client = None
                     self.use_requests = True
                     
             except Exception as e:
-                print(f"⚠️ Erro ao inicializar cliente: {str(e)}")
-                print("🔄 Tentando sem provider...")
+                if self.verbose:
+                    print(f"⚠️ Erro ao inicializar cliente: {str(e)}")
                 try:
                     self.client = InferenceClient(api_key=self.api_token)
-                    print("✅ Cliente Hugging Face inicializado (sem provider)")
+                    if self.verbose:
+                        print("✅ Cliente Hugging Face inicializado (sem provider)")
                     if not self._test_client():
                         self.use_requests = True
-                except Exception as e2:
-                    print(f"⚠️ Erro sem provider: {str(e2)}")
+                except Exception:
                     self.use_requests = True
         else:
             self.use_requests = True
         
         # Se usar requests, testar um modelo
-        if self.use_requests:
+        if self.use_requests and self.verbose:
             print("💡 Usando requests diretos para API do Hugging Face...")
             self._test_requests_api()
     
@@ -106,11 +107,13 @@ class EmbeddingManager:
         if not self.client or self.offline_mode:
             return False
         
-        print("🔍 Testando cliente Hugging Face...")
+        if self.verbose:
+            print("🔍 Testando cliente Hugging Face...")
         
-        for model in self.available_models:
+        for model in self.available_models[:2]:  # Testar apenas 2 modelos
             try:
-                print(f"🧪 Testando modelo: {model}")
+                if self.verbose:
+                    print(f"🧪 Testando modelo: {model}")
                 
                 # Teste simples
                 result = self.client.feature_extraction(
@@ -123,27 +126,19 @@ class EmbeddingManager:
                     # Converter para numpy se necessário
                     if hasattr(result, '__len__'):  # Se tem length
                         if len(result) > 0:  # Se não está vazio
-                            print(f"✅ Modelo HF funcional: {model}")
-                            print(f"📊 Tipo resultado: {type(result)}")
-                            if hasattr(result, 'shape'):
-                                print(f"📊 Shape: {result.shape}")
-                            elif isinstance(result, list):
-                                print(f"📊 Lista length: {len(result)}")
+                            if self.verbose:
+                                print(f"✅ Modelo HF funcional: {model}")
                             self.current_model = model
                             return True
                 
             except Exception as e:
                 error_msg = str(e)
                 if "truth value of an array" in error_msg:
-                    # Este erro indica que o resultado existe mas a validação falhou
-                    print(f"✅ Modelo funcional (array result): {model}")
+                    if self.verbose:
+                        print(f"✅ Modelo funcional (array result): {model}")
                     self.current_model = model
                     return True
-                elif "doesn't support task" in error_msg:
-                    print(f"❌ Modelo {model} não suporta feature-extraction")
-                elif "MaxRetryError" in error_msg:
-                    print(f"🔄 Problema de conexão com {model}")
-                else:
+                elif self.verbose and "doesn't support task" not in error_msg:
                     print(f"⚠️ Erro em {model}: {error_msg[:60]}...")
                 continue
         
@@ -151,11 +146,13 @@ class EmbeddingManager:
     
     def _test_requests_api(self):
         """Testa API usando requests diretos"""
-        print("🔍 Testando API com requests diretos...")
+        if self.verbose:
+            print("🔍 Testando API com requests diretos...")
         
-        for model in self.available_models:
+        for model in self.available_models[:2]:
             try:
-                print(f"🧪 Testando modelo via requests: {model}")
+                if self.verbose:
+                    print(f"🧪 Testando modelo via requests: {model}")
                 
                 url = f"https://api-inference.huggingface.co/models/{model}"
                 payload = {"inputs": "Hello world test"}
@@ -170,27 +167,30 @@ class EmbeddingManager:
                 if response.status_code == 200:
                     result = response.json()
                     if result and len(result) > 0:
-                        print(f"✅ Modelo requests funcional: {model}")
+                        if self.verbose:
+                            print(f"✅ Modelo requests funcional: {model}")
                         self.current_model = model
                         return
                 elif response.status_code == 503:
-                    print(f"⏳ Modelo {model} carregando...")
-                    self.current_model = model  # Existe, só está carregando
+                    if self.verbose:
+                        print(f"⏳ Modelo {model} carregando...")
+                    self.current_model = model
                     return
-                else:
-                    print(f"⚠️ HTTP {response.status_code} para {model}")
                     
             except Exception as e:
-                print(f"⚠️ Erro requests {model}: {str(e)[:50]}...")
+                if self.verbose:
+                    print(f"⚠️ Erro requests {model}: {str(e)[:50]}...")
                 continue
         
-        print("❌ Nenhum modelo funcional via requests")
+        if self.verbose:
+            print("❌ Nenhum modelo funcional via requests")
         self.offline_mode = True
     
-    def create_embeddings(self, chunks: List[str]) -> np.ndarray:
-        """Cria embeddings para lista de chunks"""
+    def create_embeddings(self, chunks: List[str], progress_callback=None) -> np.ndarray:
+        """Cria embeddings para lista de chunks com callback de progresso"""
         if self.offline_mode:
-            print("🔄 Modo offline - usando embeddings simulados")
+            if self.verbose:
+                print("🔄 Modo offline - usando embeddings simulados")
             return self._create_dummy_embeddings(len(chunks))
         
         try:
@@ -198,9 +198,11 @@ class EmbeddingManager:
             batch_size = 3
             total_batches = (len(chunks) + batch_size - 1) // batch_size
             
-            print(f"🚀 Usando modelo: {self.current_model}")
-            print(f"🚀 Método: {'HF Hub' if self.client and not self.use_requests else 'Requests'}")
-            print(f"🚀 Processando {len(chunks)} chunks em {total_batches} batches...")
+            # Log inicial apenas se verbose
+            if self.verbose:
+                print(f"🚀 Usando modelo: {self.current_model}")
+                print(f"🚀 Método: {'HF Hub' if self.client and not self.use_requests else 'Requests'}")
+                print(f"🚀 Processando {len(chunks)} chunks em {total_batches} batches...")
             
             success_count = 0
             fail_count = 0
@@ -208,28 +210,32 @@ class EmbeddingManager:
             for i in range(0, len(chunks), batch_size):
                 batch_chunks = chunks[i:i + batch_size]
                 batch_num = i // batch_size + 1
-                print(f"🔄 Batch {batch_num}/{total_batches}...")
+                
+                # Callback de progresso
+                if progress_callback:
+                    progress_callback(batch_num, total_batches, f"Processando batch {batch_num}")
                 
                 batch_embeddings = self._encode_batch(batch_chunks)
                 if batch_embeddings and len(batch_embeddings) > 0:
                     embeddings.extend(batch_embeddings)
                     success_count += len(batch_chunks)
-                    print(f"✅ Batch {batch_num} processado")
                 else:
                     dummy_embeddings = [self._create_dummy_embedding() for _ in batch_chunks]
                     embeddings.extend(dummy_embeddings)
                     fail_count += len(batch_chunks)
-                    print(f"⚠️ Batch {batch_num} simulado")
                 
                 # Pausa entre batches
                 if batch_num < total_batches:
-                    time.sleep(2)
+                    time.sleep(1)  # Reduzido de 2 para 1 segundo
             
-            print(f"📊 Resultado: {success_count} reais, {fail_count} simulados")
+            if self.verbose:
+                print(f"📊 Resultado: {success_count} reais, {fail_count} simulados")
+            
             return np.array(embeddings)
             
         except Exception as e:
-            print(f"⚠️ Erro geral: {str(e)}")
+            if self.verbose:
+                print(f"⚠️ Erro geral: {str(e)}")
             return self._create_dummy_embeddings(len(chunks))
     
     def _encode_batch(self, texts: List[str]) -> Optional[List[np.ndarray]]:
@@ -267,21 +273,21 @@ class EmbeddingManager:
                 except Exception as e:
                     error_msg = str(e)
                     if "truth value of an array" in error_msg:
-                        # Resultado válido, erro na validação - usar dummy
-                        print(f"💡 Array result para texto {i+1} - usando dummy")
                         embeddings.append(self._create_dummy_embedding())
                     else:
-                        print(f"⚠️ Erro HF texto {i+1}: {error_msg[:40]}...")
+                        if self.verbose:
+                            print(f"⚠️ Erro HF texto {i+1}: {error_msg[:40]}...")
                         embeddings.append(self._create_dummy_embedding())
                 
-                # Pausa entre textos
+                # Pausa entre textos reduzida
                 if i < len(texts) - 1:
-                    time.sleep(0.5)
+                    time.sleep(0.3)  # Reduzido de 0.5 para 0.3
             
             return embeddings if embeddings else None
             
         except Exception as e:
-            print(f"⚠️ Erro batch HF: {str(e)}")
+            if self.verbose:
+                print(f"⚠️ Erro batch HF: {str(e)}")
             return None
     
     def _encode_with_requests(self, texts: List[str]) -> Optional[List[np.ndarray]]:
@@ -298,7 +304,7 @@ class EmbeddingManager:
                         url,
                         headers=self.headers,
                         json=payload,
-                        timeout=20
+                        timeout=15  # Reduzido de 20 para 15
                     )
                     
                     if response.status_code == 200:
@@ -309,10 +315,11 @@ class EmbeddingManager:
                         else:
                             embeddings.append(self._create_dummy_embedding())
                     elif response.status_code == 503:
-                        print(f"⏳ Modelo carregando para texto {i+1}, aguardando...")
-                        time.sleep(5)
+                        if self.verbose:
+                            print(f"⏳ Modelo carregando, aguardando...")
+                        time.sleep(3)  # Reduzido de 5 para 3
                         # Tentar novamente uma vez
-                        response2 = requests.post(url, headers=self.headers, json=payload, timeout=25)
+                        response2 = requests.post(url, headers=self.headers, json=payload, timeout=20)
                         if response2.status_code == 200:
                             result = response2.json()
                             embedding = self._process_result(result)
@@ -323,21 +330,24 @@ class EmbeddingManager:
                         else:
                             embeddings.append(self._create_dummy_embedding())
                     else:
-                        print(f"⚠️ HTTP {response.status_code} para texto {i+1}")
+                        if self.verbose:
+                            print(f"⚠️ HTTP {response.status_code} para texto {i+1}")
                         embeddings.append(self._create_dummy_embedding())
                         
                 except Exception as e:
-                    print(f"⚠️ Erro requests texto {i+1}: {str(e)[:40]}...")
+                    if self.verbose:
+                        print(f"⚠️ Erro requests texto {i+1}: {str(e)[:40]}...")
                     embeddings.append(self._create_dummy_embedding())
                 
-                # Pausa entre requests
+                # Pausa entre requests reduzida
                 if i < len(texts) - 1:
-                    time.sleep(1)
+                    time.sleep(0.5)  # Reduzido de 1 para 0.5
             
             return embeddings if embeddings else None
             
         except Exception as e:
-            print(f"⚠️ Erro batch requests: {str(e)}")
+            if self.verbose:
+                print(f"⚠️ Erro batch requests: {str(e)}")
             return None
     
     def _process_result(self, result) -> Optional[np.ndarray]:
@@ -374,7 +384,8 @@ class EmbeddingManager:
                 return None
                 
         except Exception as e:
-            print(f"⚠️ Erro processando resultado: {str(e)[:30]}...")
+            if self.verbose:
+                print(f"⚠️ Erro processando resultado: {str(e)[:30]}...")
             return None
     
     def _create_dummy_embeddings(self, count: int) -> np.ndarray:
@@ -394,10 +405,12 @@ class EmbeddingManager:
             try:
                 with open(cache_file, 'rb') as f:
                     embeddings = pickle.load(f)
-                    print(f"💾 Embeddings carregados do cache")
+                    if self.verbose:
+                        print(f"💾 Embeddings carregados do cache")
                     return embeddings
             except Exception as e:
-                print(f"⚠️ Erro ao carregar cache: {e}")
+                if self.verbose:
+                    print(f"⚠️ Erro ao carregar cache: {e}")
                 return None
         return None
     
@@ -407,9 +420,11 @@ class EmbeddingManager:
         try:
             with open(cache_file, 'wb') as f:
                 pickle.dump(embeddings, f)
-            print(f"💾 Embeddings salvos no cache")
+            if self.verbose:
+                print(f"💾 Embeddings salvos no cache")
         except Exception as e:
-            print(f"⚠️ Erro ao salvar cache: {e}")
+            if self.verbose:
+                print(f"⚠️ Erro ao salvar cache: {e}")
     
     def calculate_content_hash(self, content: str) -> str:
         """Calcula hash do conteúdo para cache"""
@@ -454,7 +469,8 @@ class EmbeddingManager:
             return results
             
         except Exception as e:
-            print(f"⚠️ Erro na busca: {str(e)}")
+            if self.verbose:
+                print(f"⚠️ Erro na busca: {str(e)}")
             # Fallback
             import random
             available_chunks = list(enumerate(chunks))

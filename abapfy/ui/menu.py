@@ -7,6 +7,7 @@ from abapfy.ui.colors import print_colored, colorize
 from abapfy.generators.program import ProgramGenerator
 from abapfy.generators.module import ModuleGenerator
 from abapfy.ai.client import AIClient
+from abapfy.utils.loading import LoadingContext, ProgressSpinner
 
 class MainMenu:
     """Menu principal do ABAPFY"""
@@ -99,7 +100,7 @@ class MainMenu:
         self.module_gen.generate()
     
     def debug_code(self):
-        """Debug de código ABAP com embeddings"""
+        """Debug de código ABAP com embeddings e loading melhorado"""
         if not self.ai_client.is_configured():
             print_colored("❌ API não configurada! Configure a variável OPENAI_API_KEY.", "red")
             return
@@ -132,20 +133,29 @@ class MainMenu:
         
         print_colored(f"📁 Arquivo selecionado: {Path(selected_file).name}", "green")
         
-        # Obter informações sobre o erro (opcional)
-        print_colored("\n🤔 Descreva o problema/erro (opcional - Enter para pular):", "yellow")
+        # Obter informações sobre o erro com interface melhorada
+        print_colored("\n" + "="*60, "cyan")
+        print_colored("🤔 INFORMAÇÕES SOBRE O PROBLEMA", "cyan", bold=True)
+        print_colored("="*60, "cyan")
+        
+        print_colored("Descreva o problema/erro encontrado:", "yellow")
+        print_colored("(Ex: 'Dump ZERODIVIDE na linha 150' ou 'Loop infinito no método XYZ')", "white")
+        print_colored("Deixe vazio se quiser uma análise geral ➜", "cyan", end=" ")
         error_description = input().strip()
         
         error_location = None
         if error_description:
-            print_colored("📍 Localização do erro - linha/método (opcional):", "yellow")
+            print_colored("\nEm que linha ou método ocorre o problema?", "yellow")
+            print_colored("(Ex: 'linha 150', 'método GET_DATA', 'FORM validate_input')", "white") 
+            print_colored("Deixe vazio se não souber ➜", "cyan", end=" ")
             error_location = input().strip() or None
         
         try:
-            print_colored("\n🤖 Analisando código para debug...", "yellow")
-            print_colored("⏳ Isso pode levar alguns momentos...", "cyan")
+            print_colored("\n" + "="*60, "green")
+            print_colored("🤖 INICIANDO ANÁLISE DE DEBUG", "green", bold=True)
+            print_colored("="*60, "green")
             
-            # Executar análise de debug
+            # Executar análise de debug com loading
             debug_report = debugger.analyze_code_for_debug(
                 selected_file, error_description, error_location
             )
@@ -160,7 +170,7 @@ class MainMenu:
             print_colored(f"❌ Erro durante debug: {str(e)}", "red")
     
     def code_review(self):
-        """Code review de código ABAP com embeddings"""
+        """Code review de código ABAP com embeddings e loading melhorado"""
         if not self.ai_client.is_configured():
             print_colored("❌ API não configurada! Configure a variável OPENAI_API_KEY.", "red")
             return
@@ -194,10 +204,11 @@ class MainMenu:
         print_colored(f"📁 Arquivo selecionado: {Path(selected_file).name}", "green")
         
         try:
-            print_colored("\n🤖 Realizando code review...", "yellow")
-            print_colored("⏳ Analisando com IA e embeddings...", "cyan")
+            print_colored("\n" + "="*60, "green")
+            print_colored("📋 INICIANDO CODE REVIEW", "green", bold=True)
+            print_colored("="*60, "green")
             
-            # Executar code review
+            # Executar code review com loading
             review_report = reviewer.analyze_code(selected_file)
             
             # Exibir relatório
@@ -210,71 +221,124 @@ class MainMenu:
             print_colored(f"❌ Erro durante code review: {str(e)}", "red")
     
     def _display_debug_report(self, report: Dict[str, Any]):
-        """Exibe relatório de debug formatado"""
-        print_colored("\n" + "="*60, "green")
-        print_colored("🔍 RELATÓRIO DE DEBUG", "green", bold=True)
-        print_colored("="*60, "green")
+        """Exibe relatório de debug formatado com melhorias"""
+        print_colored("\n" + "="*70, "green")
+        print_colored("🔍 RELATÓRIO DE DEBUG ABAP", "green", bold=True)
+        print_colored("="*70, "green")
         
-        # Summary
+        # Summary melhorado
         summary = report['debug_summary']
-        print_colored(f"\n📊 RESUMO:", "cyan", bold=True)
-        print_colored(f"   Prioridade: {summary['debug_priority']}", "white")
-        print_colored(f"   Confiança: {summary['confidence_score']}%", "white") 
-        print_colored(f"   Problemas Potenciais: {summary['potential_issues_found']}", "white")
-        print_colored(f"   Causa Mais Provável: {summary['most_likely_cause']}", "white")
+        print_colored(f"\n📊 RESUMO DA ANÁLISE:", "cyan", bold=True)
+        print_colored(f"   📋 Arquivo: {Path(report['metadata']['file_path']).name}", "white")
+        print_colored(f"   📐 Total de linhas: {report['metadata']['total_lines']}", "white")
+        print_colored(f"   🧩 Chunks analisados: {report['metadata']['total_chunks']}", "white")
+        print_colored(f"   🚨 Prioridade: {summary['debug_priority']}", "white")
+        print_colored(f"   🎯 Confiança: {summary['confidence_score']}%", "white")
+        print_colored(f"   📈 Issues encontrados: {summary['total_issues_found']}", "white")
+        print_colored(f"   🔍 Causa provável: {summary['most_likely_cause']}", "white")
+        
+        # Mostrar problemas críticos se existirem
+        if summary.get('critical_issues', 0) > 0:
+            print_colored(f"\n🚨 PROBLEMAS CRÍTICOS DETECTADOS:", "red", bold=True)
+            regex_analysis = report.get('regex_analysis', {})
+            for pattern_name, issues in regex_analysis.items():
+                if issues and any(issue.get('severity') == 'CRITICAL' for issue in issues):
+                    print_colored(f"   ❌ {pattern_name.replace('_', ' ').title()}:", "red")
+                    for issue in issues[:3]:  # Mostrar apenas primeiros 3
+                        if issue.get('severity') == 'CRITICAL':
+                            print_colored(f"      📍 Linha {issue['line']}: {issue['description']}", "white")
+        
+        # Problemas de alta prioridade
+        if summary.get('high_issues', 0) > 0:
+            print_colored(f"\n⚠️ PROBLEMAS DE ALTA PRIORIDADE:", "red")
+            regex_analysis = report.get('regex_analysis', {})
+            count = 0
+            for pattern_name, issues in regex_analysis.items():
+                if issues and any(issue.get('severity') == 'HIGH' for issue in issues) and count < 5:
+                    for issue in issues:
+                        if issue.get('severity') == 'HIGH' and count < 5:
+                            print_colored(f"   🔸 Linha {issue['line']}: {issue['description']}", "white")
+                            count += 1
         
         # Sugestões
         if report.get('debug_suggestions'):
-            print_colored(f"\n💡 SUGESTÕES:", "yellow", bold=True)
-            for suggestion in report['debug_suggestions']:
-                print_colored(f"   {suggestion}", "white")
+            print_colored(f"\n💡 SUGESTÕES DE CORREÇÃO:", "yellow", bold=True)
+            for i, suggestion in enumerate(report['debug_suggestions'][:5], 1):
+                print_colored(f"   {i}. {suggestion}", "white")
         
         # Próximos passos
         if report.get('next_steps'):
             print_colored(f"\n📋 PRÓXIMOS PASSOS:", "magenta", bold=True)
             for step in report['next_steps']:
                 print_colored(f"   {step}", "white")
+        
+        # Análise detalhada se existir
+        if report.get('detailed_debug_analysis'):
+            print_colored(f"\n🤖 ANÁLISE DETALHADA DA IA:", "blue", bold=True)
+            for chunk_name, analysis in report['detailed_debug_analysis'].items():
+                print_colored(f"   📄 {chunk_name}:", "cyan")
+                # Mostrar apenas primeiras linhas para não poluir
+                analysis_lines = analysis.split('\n')[:4]
+                for line in analysis_lines:
+                    if line.strip():
+                        print_colored(f"      {line}", "white")
+                if len(analysis.split('\n')) > 4:
+                    print_colored(f"      ... (análise completa no relatório salvo)", "yellow")
     
     def _display_review_report(self, report: Dict[str, Any]):
-        """Exibe relatório de code review formatado"""
-        print_colored("\n" + "="*60, "green")
+        """Exibe relatório de code review formatado com melhorias"""
+        print_colored("\n" + "="*70, "green")
         print_colored("📋 RELATÓRIO DE CODE REVIEW", "green", bold=True)
-        print_colored("="*60, "green")
+        print_colored("="*70, "green")
         
         # Summary
         summary = report['summary']
         print_colored(f"\n📊 AVALIAÇÃO GERAL:", "cyan", bold=True)
-        print_colored(f"   Rating: {summary['overall_rating']}", "white")
-        print_colored(f"   Score: {summary['severity_score']}/100", "white")
-        print_colored(f"   Issues Encontrados: {summary['total_issues_found']}", "white")
-        print_colored(f"   Chunks Analisados: {summary['chunks_analyzed']}", "white")
+        print_colored(f"   📋 Arquivo: {Path(report['metadata']['file_path']).name}", "white")
+        print_colored(f"   📐 Total de linhas: {report['metadata']['total_lines']}", "white")
+        print_colored(f"   🧩 Chunks analisados: {summary['chunks_analyzed']}", "white")
+        print_colored(f"   ⭐ Rating: {summary['overall_rating']}", "white")
+        print_colored(f"   📊 Score: {summary['severity_score']}/100", "white")
+        print_colored(f"   🔍 Issues encontrados: {summary['total_issues_found']}", "white")
         
         # Análise por categoria
         print_colored(f"\n🔍 ANÁLISE POR CATEGORIA:", "yellow", bold=True)
         for category, analysis in report['analysis_by_category'].items():
             issues = analysis['issues_found']
-            status = "🔴" if issues > 3 else "🟡" if issues > 1 else "🟢"
-            print_colored(f"   {status} {category.replace('_', ' ').title()}: {issues} problemas", "white")
+            if issues > 0:
+                status = "🔴" if issues > 3 else "🟡" if issues > 1 else "🟢"
+                category_name = category.replace('_', ' ').title()
+                print_colored(f"   {status} {category_name}: {issues} problemas", "white")
         
         # Recomendações
         if report.get('recommendations'):
-            print_colored(f"\n💡 RECOMENDAÇÕES:", "magenta", bold=True)
-            for rec in report['recommendations']:
-                print_colored(f"   {rec}", "white")
+            print_colored(f"\n💡 RECOMENDAÇÕES PRINCIPAIS:", "magenta", bold=True)
+            for i, rec in enumerate(report['recommendations'][:5], 1):
+                print_colored(f"   {i}. {rec}", "white")
+        
+        # Análise detalhada resumida
+        if report.get('detailed_findings'):
+            print_colored(f"\n🤖 ANÁLISE DETALHADA DA IA:", "blue", bold=True)
+            findings_count = len(report['detailed_findings'])
+            if findings_count > 0:
+                print_colored(f"   📄 {findings_count} chunk(s) analisado(s) em detalhes", "cyan")
+                print_colored(f"   💾 Análise completa disponível no relatório salvo", "yellow")
     
     def _save_debug_report(self, report: Dict[str, Any]):
         """Salva relatório de debug"""
         if click.confirm(colorize("💾 Deseja salvar o relatório de debug?", "cyan")):
             try:
-                output_dir = Path("output/debug_reports")
-                output_dir.mkdir(parents=True, exist_ok=True)
-                
-                filename = f"debug_report_{report['metadata']['analysis_timestamp'].replace(':', '-').replace(' ', '_')}.json"
-                file_path = output_dir / filename
-                
-                import json
-                with open(file_path, 'w', encoding='utf-8') as f:
-                    json.dump(report, f, indent=2, ensure_ascii=False)
+                with LoadingContext("Salvando relatório", "spinner"):
+                    output_dir = Path("output/debug_reports")
+                    output_dir.mkdir(parents=True, exist_ok=True)
+                    
+                    timestamp = report['metadata']['analysis_timestamp'].replace(':', '-').replace(' ', '_')
+                    filename = f"debug_report_{timestamp}.json"
+                    file_path = output_dir / filename
+                    
+                    import json
+                    with open(file_path, 'w', encoding='utf-8') as f:
+                        json.dump(report, f, indent=2, ensure_ascii=False)
                 
                 print_colored(f"✅ Relatório salvo em: {file_path}", "green")
                 
@@ -285,15 +349,17 @@ class MainMenu:
         """Salva relatório de code review"""
         if click.confirm(colorize("💾 Deseja salvar o relatório de review?", "cyan")):
             try:
-                output_dir = Path("output/review_reports")
-                output_dir.mkdir(parents=True, exist_ok=True)
-                
-                filename = f"review_report_{report['metadata']['analysis_timestamp'].replace(':', '-').replace(' ', '_')}.json"
-                file_path = output_dir / filename
-                
-                import json
-                with open(file_path, 'w', encoding='utf-8') as f:
-                    json.dump(report, f, indent=2, ensure_ascii=False)
+                with LoadingContext("Salvando relatório", "spinner"):
+                    output_dir = Path("output/review_reports")
+                    output_dir.mkdir(parents=True, exist_ok=True)
+                    
+                    timestamp = report['metadata']['analysis_timestamp'].replace(':', '-').replace(' ', '_')
+                    filename = f"review_report_{timestamp}.json"
+                    file_path = output_dir / filename
+                    
+                    import json
+                    with open(file_path, 'w', encoding='utf-8') as f:
+                        json.dump(report, f, indent=2, ensure_ascii=False)
                 
                 print_colored(f"✅ Relatório salvo em: {file_path}", "green")
                 
