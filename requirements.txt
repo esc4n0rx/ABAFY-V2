@@ -1,0 +1,5 @@
+click
+openai
+colorama
+rich
+pydantic
