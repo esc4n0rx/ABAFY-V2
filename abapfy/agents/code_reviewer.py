@@ -1,3 +1,5 @@
+# abapfy/agents/code_reviewer.py
+
 import json
 from typing import Dict, Any
 from abapfy.agents.base_agent import BaseAgent
@@ -10,14 +12,23 @@ class CodeReviewerAgent(BaseAgent):
         super().__init__(ai_client, config, "code_reviewer")
     
     def execute(self, input_data: Dict[str, Any]) -> Dict[str, Any]:
-        """Executa revisão do código"""
+        """Executa revisão do código, garantindo que o código seja sempre retornado."""
         generated_code = input_data.get("generated_code", "")
         requirements = input_data.get("requirements", {})
         implementation_notes = input_data.get("implementation_notes", [])
         
-        # Garantir que temos código ABAP limpo
+        # Garantir que temos um código de entrada limpo e válido
         clean_code = self._ensure_clean_abap_code(generated_code)
         
+        # Se o código de entrada já estiver vazio, não há o que revisar
+        if not clean_code:
+            return {
+                "reviewed_code": "",
+                "corrections_made": [],
+                "quality_score": 0,
+                "recommendations": ["Nenhum código gerado para revisar."]
+            }
+
         # Construir contexto
         context = {
             "generated_code": clean_code,
@@ -34,70 +45,77 @@ class CodeReviewerAgent(BaseAgent):
             try:
                 result = json.loads(response)
                 
-                # Garantir que o código revisado está limpo
-                if result.get("reviewed_code"):
-                    result["reviewed_code"] = self._ensure_clean_abap_code(result["reviewed_code"])
+                # Verificar se o código revisado existe e é válido
+                reviewed_code = result.get("reviewed_code", "")
+                if reviewed_code and self._is_valid_abap(reviewed_code):
+                    result["reviewed_code"] = self._ensure_clean_abap_code(reviewed_code)
                 else:
+                    # Se não houver código revisado válido, retorna o original
                     result["reviewed_code"] = clean_code
+                    result.setdefault("recommendations", []).append(
+                        "Código revisado não era válido ou estava ausente. Retornando código original."
+                    )
                     
             except json.JSONDecodeError:
-                # Se não conseguir parsear JSON, assumir que é código puro
-                reviewed_code = self._ensure_clean_abap_code(response)
-                result = {
-                    "reviewed_code": reviewed_code,
-                    "corrections_made": [],
-                    "quality_score": 80,
-                    "recommendations": ["Código revisado e limpo"]
-                }
-            
+                # Se a resposta não for JSON, pode ser código puro ou um texto de análise
+                potential_code = self._ensure_clean_abap_code(response)
+                if self._is_valid_abap(potential_code):
+                    # A resposta é um código ABAP válido
+                    result = {
+                        "reviewed_code": potential_code,
+                        "corrections_made": [],
+                        "quality_score": 80, # Score padrão para código puro
+                        "recommendations": ["Revisão retornou código ABAP puro."]
+                    }
+                else:
+                    # A resposta é um texto de análise, então usamos o código original
+                    result = {
+                        "reviewed_code": clean_code, # Fallback para o código original
+                        "corrections_made": [],
+                        "quality_score": 75, # Score menor indicando que a revisão pode ter falhado
+                        "recommendations": [
+                            "A resposta da revisão não continha código ABAP válido.",
+                            f"Análise recebida: {response[:200]}..." # Log da análise
+                        ]
+                    }
+
             return result
             
         except Exception as e:
-            # Em caso de erro, retornar código original limpo
+            # Em caso de erro na chamada da API, retornar o código original
             return {
                 "reviewed_code": clean_code,
                 "corrections_made": [],
-                "quality_score": 75,
-                "recommendations": [f"Erro na revisão: {str(e)}. Código original preservado."]
+                "quality_score": 70, # Score ainda menor para indicar falha
+                "recommendations": [f"Erro crítico durante a revisão: {str(e)}. Código original preservado."]
             }
-    
+
+    def _is_valid_abap(self, code: str) -> bool:
+        """Verificação simples se o texto parece ser código ABAP."""
+        if not code or not isinstance(code, str):
+            return False
+        
+        # Procura por palavras-chave comuns de início de programa/bloco ABAP
+        abap_keywords = ["REPORT", "FUNCTION", "CLASS", "METHOD", "FORM", "START-OF-SELECTION", "*&---"]
+        return any(keyword in code.upper() for keyword in abap_keywords)
+
     def _ensure_clean_abap_code(self, code: str) -> str:
         """Garante que o código está limpo e é puramente ABAP"""
-        if not code.strip():
+        if not code or not isinstance(code, str) or not code.strip():
             return ""
         
-        # Remover texto explicativo e JSON
-        clean_code = code
+        # Remover blocos de código markdown e JSON
+        code = re.sub(r'```json.*?```', '', code, flags=re.DOTALL)
+        code = re.sub(r'```abap\n?', '', code)
+        code = re.sub(r'```', '', code)
         
-        # Remover blocos JSON se presentes
-        clean_code = re.sub(r'```json.*?```', '', clean_code, flags=re.DOTALL)
+        # Remove explicações comuns que podem vir junto com o código
+        lines = code.split('\n')
         
-        # Remover texto introdutório
-        intro_patterns = [
-            r'^.*?(?=\*&-{5,})',  # Tudo antes do cabeçalho ABAP
-            r'^.*?(?=REPORT\s+)',  # Tudo antes de REPORT
-            r'^.*?(?=FUNCTION\s+)', # Tudo antes de FUNCTION
-            r'^.*?(?=CLASS\s+\w+\s+DEFINITION)'  # Tudo antes de CLASS
+        # Filtra linhas que não parecem ser código
+        abap_lines = [
+            line for line in lines 
+            if not line.strip().startswith(("**Observações**", "- ", '"**Observações'))
         ]
-        
-        for pattern in intro_patterns:
-            match = re.search(pattern, clean_code, re.DOTALL | re.IGNORECASE)
-            if match:
-                clean_code = clean_code[match.end():]
-                break
-        
-        # Remover blocos de código markdown
-        clean_code = re.sub(r'```\w*\n', '', clean_code)
-        clean_code = re.sub(r'\n```', '', clean_code)
-        
-        # Remover linhas com JSON no final
-        lines = clean_code.split('\n')
-        abap_lines = []
-        
-        for line in lines:
-            # Parar se encontrar JSON ou texto explicativo
-            if any(pattern in line for pattern in ['"generated_code"', '"implementation_notes"', '{"', '},']):
-                break
-            abap_lines.append(line)
         
         return '\n'.join(abap_lines).strip()

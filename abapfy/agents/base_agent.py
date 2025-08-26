@@ -1,9 +1,12 @@
+# abapfy/agents/base_agent.py
+
 from abc import ABC, abstractmethod
 from typing import Dict, Any, Optional
 import json
 from pathlib import Path
 from abapfy.ai.client import AIClient
 from abapfy.config.manager import ConfigManager
+import re
 
 class BaseAgent(ABC):
     """Classe base para todos os agentes do sistema"""
@@ -16,14 +19,27 @@ class BaseAgent(ABC):
         self._prompt_config = self._load_prompt_config()
     
     def _load_prompt_config(self) -> Dict[str, Any]:
-        """Carrega configuração de prompts do agente"""
-        prompt_file = self.prompts_dir / f"{self.agent_name.lower()}.json"
+        """Carrega configuração de prompts do agente a partir de arquivos .md"""
+        prompt_file = self.prompts_dir / f"{self.agent_name.lower()}.md"
         try:
             with open(prompt_file, 'r', encoding='utf-8') as f:
-                return json.load(f)
+                content = f.read()
+                
+                # Extrair descrição
+                description_match = re.search(r"\*\*Descrição\*\*: (.*)", content)
+                description = description_match.group(1).strip() if description_match else ""
+                
+                # Extrair template
+                template_match = re.search(r"\*\*Template\*\*:\s*\n(.*)", content, re.DOTALL)
+                template = template_match.group(1).strip() if template_match else ""
+                
+                return {
+                    "description": description,
+                    "prompt_template": template
+                }
         except Exception as e:
             raise RuntimeError(f"Erro ao carregar prompts do agente {self.agent_name}: {str(e)}")
-    
+
     def _build_prompt(self, context: Dict[str, Any]) -> str:
         """Constrói prompt baseado na configuração e contexto"""
         prompt_template = self._prompt_config.get("prompt_template", "")
